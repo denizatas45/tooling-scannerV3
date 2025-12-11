@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Tooling Live OCR Scanner</title>
+    <style>
+        :root {
+            --bg: #020617;
+            --card: #020617;
+            --border: #1f2937;
+            --accent: #38bdf8;
+            --accent-soft: #0ea5e9;
+            --text: #e5e7eb;
+            --muted: #9ca3af;
+        }
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 16px;
+            font-family: "Segoe UI", system-ui, sans-serif;
+            background: radial-gradient(circle at top, #1e293b, #020617 60%);
+            color: var(--text);
+        }
+
+        .shell {
+            max-width: 980px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin: 0 0 4px 0;
+            font-size: 22px;
+        }
+
+        .sub {
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 10px;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 2fr 3fr;
+            gap: 12px;
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            padding: 12px;
+            box-shadow: 0 18px 40px rgba(0,0,0,0.55);
+        }
+
+        video {
+            width: 100%;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: black;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+            align-items: center;
+        }
+
+        button {
+            padding: 7px 13px;
+            border-radius: 999px;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #020617;
+        }
+        .btn-primary:hover { background: var(--accent-soft); }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-ghost:hover { background: rgba(148,163,184,0.2); }
+
+        .badge {
+            display: inline-flex;
+            padding: 2px 7px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .progress {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 4px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        th, td {
+            padding: 5px 6px;
+            border-bottom: 1px solid #1f2937;
+        }
+
+        th {
+            text-align: left;
+            background: #020617;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+
+        .code-cell {
+            font-family: Consolas, monospace;
+            font-size: 11px;
+        }
+
+        .raw-cell {
+            font-size: 11px;
+            color: #9ca3af;
+        }
+
+        .hint {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        @media (max-width: 900px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="shell">
+    <h1>Tooling Live OCR Scanner</h1>
+    <div class="sub">
+        iPhone veya bilgisayar kamerasıyla etikete tut, uygulama <b>CM389T-25A</b>, <b>CM-S-389LR</b> gibi kodları canlı yakalayıp listeye eklesin.
+        Sonra CSV indirip Excel / sayım sistemine aktarabilirsin.
+    </div>
+
+    <div class="layout">
+        <!-- Kamera tarafı -->
+        <div class="card">
+            <video id="video" playsinline autoplay muted></video>
+            <canvas id="canvas" style="display:none;"></canvas>
+
+            <div class="controls">
+                <button id="btnStartCam" class="btn-primary">📷 Kamerayı Başlat</button>
+                <button id="btnScanOnce" class="btn-ghost">🔍 Tek Kare Tara</button>
+                <button id="btnToggleAuto" class="btn-ghost">⏱ Otomatik: Kapalı</button>
+            </div>
+            <div class="controls" style="margin-top:4px;">
+                <button id="btnClear" class="btn-ghost">🗑 Listeyi Temizle</button>
+                <button id="btnExport" class="btn-ghost">💾 CSV İndir</button>
+                <span class="badge" id="badgeInfo">0 kod</span>
+            </div>
+            <div class="progress" id="statusText">
+                Hazır. Önce "Kamerayı Başlat" deyip etikete telefonun arka kamerasını tut.
+            </div>
+            <div class="hint" style="margin-top:4px;">
+                İpucu: Etiketi mümkün olduğunca ekranın ortasında ve düz tut. Kutu üzerindeki mor halkadaki yazılardan çok,
+                beyaz sticker / label üzerindeki düz yazıları hedefle.
+            </div>
+        </div>
+
+        <!-- Kod listesi -->
+        <div class="card">
+            <div style="margin-bottom:4px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:13px; font-weight:600;">📋 Bulunan Kodlar</span>
+                <span class="hint">CM ile başlayan, harf/rakam karışık kod benzeri parçalar listelenir.</span>
+            </div>
+            <div style="max-height:460px; overflow:auto; border-radius:10px; border:1px solid var(--border);">
+                <table>
+                    <thead>
+                    <tr>
+                        <th style="width:120px;">Kod</th>
+                        <th style="width:120px;">Tarih / Saat</th>
+                        <th>Ham satır</th>
+                    </tr>
+                    </thead>
+                    <tbody id="codesBody">
+                    <tr>
+                        <td colspan="3" style="font-size:12px; color:#6b7280;">
+                            Henüz kod yok. Etikete kamerayı tutup "Tek Kare Tara" veya "Otomatik" kullan.
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+        <div style="font-size:12px; color:var(--muted);">
+            Notlar:
+            <ul style="margin-top:4px; padding-left:18px;">
+                <li>Kamera erişimi için iPhone’da <b>HTTPS</b> veya yerel ağ (örn: <code>http://10.x.x.x</code>) üzerinden açmak daha sorunsuz çalışır.</li>
+                <li>Otomatik tarama 3 saniyede bir kare alıp OCR çalıştırır. Telefon ısınırsa süreyi koddan uzatabiliriz.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Tesseract.js -->
+<script src="https://unpkg.com/tesseract.js@v5.0.0/dist/tesseract.min.js"></script>
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const statusText = document.getElementById('statusText');
+    const codesBody = document.getElementById('codesBody');
+    const badgeInfo = document.getElementById('badgeInfo');
+
+    const btnStartCam = document.getElementById('btnStartCam');
+    const btnScanOnce = document.getElementById('btnScanOnce');
+    const btnToggleAuto = document.getElementById('btnToggleAuto');
+    const btnClear = document.getElementById('btnClear');
+    const btnExport = document.getElementById('btnExport');
+
+    let stream = null;
+    let isScanning = false;
+    let autoScan = false;
+    let autoScanTimer = null;
+
+    const codes = []; // { code, line, date }
+
+    // Kamera başlat
+    btnStartCam.addEventListener('click', async () => {
+        if (stream) {
+            statusText.textContent = "Kamera zaten açık.";
+            return;
+        }
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: { ideal: "environment" }, // arka kamera
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                },
+                audio: false
+            });
+            video.srcObject = stream;
+            statusText.textContent = "Kamera açık. Etikete yaklaş ve 'Tek Kare Tara' de.";
+        } catch (e) {
+            console.error(e);
+            statusText.textContent = "Kamera açılamadı. Tarayıcı izinlerini ve bağlantıyı kontrol et.";
+        }
+    });
+
+    // Tek kare tara
+    btnScanOnce.addEventListener('click', () => {
+        scanFrame();
+    });
+
+    // Otomatik tarama aç/kapa
+    btnToggleAuto.addEventListener('click', () => {
+        autoScan = !autoScan;
+        btnToggleAuto.textContent = autoScan ? "⏱ Otomatik: Açık" : "⏱ Otomatik: Kapalı";
+
+        if (autoScan) {
+            scheduleNextScan();
+        } else {
+            if (autoScanTimer) {
+                clearTimeout(autoScanTimer);
+                autoScanTimer = null;
+            }
+        }
+    });
+
+    function scheduleNextScan() {
+        if (!autoScan) return;
+        if (autoScanTimer) clearTimeout(autoScanTimer);
+        // 3 saniyede bir kare tara
+        autoScanTimer = setTimeout(() => {
+            scanFrame().then(() => {
+                scheduleNextScan();
+            });
+        }, 3000);
+    }
+
+    async function scanFrame() {
+        if (!stream) {
+            statusText.textContent = "Önce kamerayı başlat.";
+            return;
+        }
+        if (isScanning) {
+            statusText.textContent = "Önceki OCR bitmedi, biraz bekle.";
+            return;
+        }
+
+        isScanning = true;
+        statusText.textContent = "Kare alınıyor...";
+
+        const ctx = canvas.getContext('2d');
+        const w = video.videoWidth || 640;
+        const h = video.videoHeight || 480;
+
+        // Kanvas boyutunu biraz daha küçük yapalım ki hızlansın
+        const scale = 0.7;
+        canvas.width = w * scale;
+        canvas.height = h * scale;
+
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.7));
+
+        statusText.textContent = "OCR çalışıyor...";
+
+        try {
+            const res = await Tesseract.recognize(
+                blob,
+                'eng',
+                {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            statusText.textContent = `OCR: %${Math.round(m.progress*100)} – biraz sabır 🙂`;
+                        }
+                    },
+                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- '
+                }
+            );
+            const text = res.data.text || '';
+            handleRecognizedText(text);
+        } catch (e) {
+            console.error(e);
+            statusText.textContent = "OCR sırasında hata oluştu.";
+        } finally {
+            isScanning = false;
+        }
+    }
+
+    function handleRecognizedText(text) {
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+        if (!lines.length) {
+            statusText.textContent = "Metin algılanamadı. Biraz daha yaklaştır veya etiketi düzleştir.";
+            return;
+        }
+
+        let foundSomething = false;
+
+        lines.forEach(line => {
+            const regex = /(CM[\s\-]?[0-9]{2,}[A-Z0-9\s\-]{0,8})/gi;
+            const matches = line.match(regex);
+            if (!matches) return;
+
+            matches.forEach(m => {
+                let code = m.toUpperCase();
+                // uzun tireleri düz tire, boşlukları sil
+                code = code.replace(/[–—]/g, '-');
+                code = code.replace(/\s+/g, '');
+                // baş/son noktalama temizliği
+                code = code.replace(/^[\.\,:;]+/, '').replace(/[\.\,:;]+$/, '');
+
+                if (code.length < 6) return;
+                if (!code.startsWith('CM')) return;
+
+                // Aynı kodu tekrar ekleme
+                if (codes.some(c => c.code === code)) return;
+
+                const item = {
+                    code,
+                    line,
+                    date: new Date()
+                };
+                codes.push(item);
+                foundSomething = true;
+            });
+        });
+
+        if (foundSomething) {
+            statusText.textContent = "Yeni kod(lar) bulundu.";
+            renderCodes();
+        } else {
+            statusText.textContent = "Metin okundu ama CM*** formatında kod yakalanamadı.";
+        }
+    }
+
+    function renderCodes() {
+        codesBody.innerHTML = '';
+        if (!codes.length) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 3;
+            td.textContent = 'Henüz kod yok.';
+            td.style.fontSize = '12px';
+            td.style.color = '#6b7280';
+            tr.appendChild(td);
+            codesBody.appendChild(tr);
+            badgeInfo.textContent = '0 kod';
+            return;
+        }
+
+        const formatter = new Intl.DateTimeFormat('tr-TR', {
+            year: '2-digit', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+
+        codes.forEach(c => {
+            const tr = document.createElement('tr');
+            const c1 = document.createElement('td');
+            const c2 = document.createElement('td');
+            const c3 = document.createElement('td');
+
+            c1.textContent = c.code;
+            c1.className = 'code-cell';
+
+            c2.textContent = formatter.format(c.date);
+            c2.style.fontSize = '11px';
+            c2.style.color = '#9ca3af';
+
+            c3.textContent = c.line;
+            c3.className = 'raw-cell';
+
+            tr.appendChild(c1);
+            tr.appendChild(c2);
+            tr.appendChild(c3);
+            codesBody.appendChild(tr);
+        });
+
+        badgeInfo.textContent = codes.length + ' kod';
+    }
+
+    btnClear.addEventListener('click', () => {
+        codes.length = 0;
+        renderCodes();
+        statusText.textContent = "Liste temizlendi.";
+    });
+
+    btnExport.addEventListener('click', () => {
+        if (!codes.length) {
+            alert('Önce birkaç kod tara kanka 🙂');
+            return;
+        }
+
+        let csv = 'Code;DateTime;Line\n';
+        const isoFmt = new Intl.DateTimeFormat('sv-SE', {
+            year:'numeric',month:'2-digit',day:'2-digit',
+            hour:'2-digit',minute:'2-digit',second:'2-digit',
+            hour12:false
+        });
+
+        codes.forEach(c => {
+            const esc = s => '"' + String(s||'').replace(/"/g,'""') + '"';
+            const dt = isoFmt.format(c.date);
+            csv += esc(c.code) + ';' + esc(dt) + ';' + esc(c.line) + '\n';
+        });
+
+        const bom = '\uFEFF';
+        const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'live_ocr_codes.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+</script>
+</body>
+</html>
